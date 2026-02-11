@@ -1,0 +1,121 @@
+Agent Test Results Analysis
+Todo List:
+ Read task instruction (task.yaml)
+ Read test file (tests/test_outputs.py)
+ Check agent test results (.test-results/)
+ Analyze task components and identify issues
+ Review solution.sh for reference
+ Provide detailed analysis and recommendations
+Agent Test Results Overview
+All four agents failed this task:
+
+codex-gpt5: FAIL (BAD FAILURE - Underspecified instruction + Environment issues)
+claude-sonnet-4-5: FAIL (BAD FAILURE - Underspecified instruction + Environment issues)
+gemini-cli: FAIL (BAD FAILURE - Underspecified instruction + Environment issues)
+terminus2-gemini: FAIL (BAD FAILURE - Underspecified instruction + Environment issues)
+Critical Issue: Universal failure across all agents strongly indicates task design problems, not genuine difficulty.
+
+Detailed Result Analysis
+All Agents: Universal BAD FAILURE
+What the Agents Faced:
+All agents attempted to create a Jupyter notebook for turbofan engine degradation prediction but failed due to critical task specification and environment issues.
+
+Top Result Reasons:
+1. RIGID TESTS / UNDERSPECIFIED INSTRUCTION ⚠️
+
+Issue: Missing cycle column specification in instruction
+
+Evidence from task.yaml lines 94-101: The instruction specifies predictions format as engine_id, cycle, degradation_status but NEVER explains where cycle comes from or that it must be preserved from the test set
+Evidence from test code (test_outputs.py:162-169): Tests merge predictions on (engine_id, cycle) pairs, requiring exact matches
+Problem: Agents cannot infer they must preserve the cycle column from X_test when the instruction only says "engine_id: integer identifier for each engine (preserve from X_test)" without mentioning cycle preservation
+Critical Gap: The instruction says what columns to include but not where or how to obtain the cycle values. An agent reading the instruction would not know:
+
+That cycle is a column in the original dataset
+That cycle must be preserved from X_test (only engine_id preservation is mentioned)
+That the (engine_id, cycle) pair uniquely identifies each sample (mentioned in schema but not in requirements)
+2. ENVIRONMENT ISSUE - DATA GENERATION FAILURE 🐛
+
+Issue: Data pipeline fails during Docker build
+
+Evidence from Dockerfile:25: RUN cd /app/data && python3 data_pipeline.py runs at build time
+Evidence from data_pipeline.py:78-83: Attempts to download from NASA URLs that may be unreliable or blocked
+Problem: If data generation fails during build, the container never starts properly, causing all agents to fail before they can even attempt the task
+Failure Mode:
+
+# data_pipeline.py tries to download from:
+download_url: "https://ti.arc.nasa.gov/c/6/"
+mirror_url: "https://data.nasa.gov/download/brfb-gzcv/application%2Fzip"
+Both URLs may fail due to network issues, SSL problems, or NASA server availability.
+
+3. INSUFFICIENT DATASET DOCUMENTATION 📊
+
+Issue: Dataset schema incompletely specified
+
+Evidence from task.yaml:29-30: Says "Total samples: 1,000 (100 engines × 10 cycles each)" but this is specific to FD003 with preprocessing
+Evidence from config.yaml:15: Supports FD001, FD002, FD003, FD004 but only FD003 characteristics are documented
+Problem: If config is changed or data generation produces different structure, agents work with wrong assumptions
+4. OVER-PRESCRIPTIVE IMPLEMENTATION DETAILS 🎯
+
+Issue: Task provides exact solution code instead of requirements
+
+Evidence from task.yaml:56-79: Includes exact code snippets for feature engineering (rolling averages, interactions, rate of change)
+Evidence from task.yaml:82-92: Specifies exact model hyperparameters (RandomForestClassifier with n_estimators=100, max_depth=10-15, etc.)
+Problem: This is "testing implementation, not behavior" - agents are expected to copy-paste code rather than solve the problem creatively
+Instead of: "Create features that capture temporal patterns and sensor relationships"
+The task says: "Use this exact code: df[f'{col}_ma3'] = df.groupby('engine_id')[col].transform(...)"
+
+Actionable Recommendations for Task Improvement:
+PRIORITY 1: Fix Underspecified Instruction (Critical)
+Fix the predictions.csv specification in task.yaml (lines 94-102):
+
+5. Save predictions to `/app/predictions.csv` with the following format:
+   - Columns (in this exact order): engine_id, cycle, degradation_status
+   - engine_id: integer identifier for each engine (preserve from X_test)
+   - cycle: integer cycle number for that engine (preserve from X_test)
+   - degradation_status: integer prediction (0 for healthy, 1 for degraded)
+   - IMPORTANT: Both engine_id and cycle must be preserved from X_test to match the original samples
+   - One row per test sample with the exact engine_id and cycle values from the test set
+   
+   Example of preserving these columns:
+   ```python
+   predictions_df = pd.DataFrame({
+       'engine_id': X_test['engine_id'].values,
+       'cycle': X_test['cycle'].values,
+       'degradation_status': y_pred
+   })
+
+#### **PRIORITY 2: Fix Environment Issues (Critical)**
+
+**1. Pre-generate data in repository instead of downloading at build time:**
+- Check in `engine_data_FD003.csv` directly to the task directory
+- Remove the `RUN cd /app/data && python3 data_pipeline.py` line from Dockerfile
+- Update Dockerfile to just `COPY engine_data_FD003.csv ./`
+
+**2. OR: Add robust fallback to synthetic data:**
+```dockerfile
+# Generate dataset with fallback
+RUN cd /app/data && python3 data_pipeline.py || python3 generate_data.py
+PRIORITY 3: Clarify Feature Engineering Requirements (Medium)
+Remove exact implementation code, replace with behavioral requirements:
+
+Instead of providing exact code (lines 56-79), specify:
+
+3. Feature Engineering Requirements:
+   Create at least 3-5 new features that improve model performance:
+   - Temporal features: Calculate rolling statistics within each engine's cycle history
+   - Sensor relationships: Create interaction terms between related sensors
+   - Degradation indicators: Calculate rates of change that might signal deterioration
+   
+   Note: Group all temporal operations by engine_id to respect engine boundaries
+PRIORITY 4: Make Tests More Forgiving (Low)
+Consider making test thresholds slightly more lenient (85% → 82%) to account for variability in feature engineering approaches, OR provide more specific guidance on which features are essential for meeting thresholds.
+
+Summary
+Task Status: ❌ NOT READY FOR PRODUCTION
+
+Critical Blockers:
+
+Underspecified instruction missing cycle column preservation details (all agents will fail)
+Environment issues with data generation at build time (may cause flaky failures)
+Over-prescription testing implementation rather than behavior
+Recommended Action: Address Priority 1 and Priority 2 issues before merging. The task currently has a 0% pass rate due to specification gaps, not agent capability limitations
