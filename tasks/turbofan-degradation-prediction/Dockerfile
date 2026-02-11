@@ -27,12 +27,17 @@ RUN cd /app/data && python3 data_pipeline.py
 # Create output directories
 RUN mkdir -p /app/outputs /app/logs
 
-# Copy entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+# Copy solution script
+COPY solution.sh /app/solution.sh
+RUN chmod +x /app/solution.sh
 
-# Set entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Copy test script and tests
+COPY tests/ /app/tests/
+COPY run-test.sh /app/run-test.sh
+RUN chmod +x /app/run-test.sh
 
-# Default command: keep container running (interactive mode)
-CMD []
+# Set environment variables for tests
+ENV TEST_DIR=/app/tests
+
+# Default command: run solution and tests
+CMD ["bash", "-c", "bash /app/solution.sh && echo '\n=== Running Tests ===' && bash /app/run-test.sh"]

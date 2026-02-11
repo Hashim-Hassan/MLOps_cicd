@@ -183,3 +183,4 @@ if __name__ == '__main__':
     print(df.head())
     print("\nData types:")
     print(df.dtypes)
+    

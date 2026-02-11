@@ -200,3 +200,4 @@ def test_model_performance():
     
     print(f"✓ Model performance: accuracy={accuracy:.4f}, f1_score={f1:.4f}, "
           f"precision={precision:.4f}, recall={recall:.4f}")
+

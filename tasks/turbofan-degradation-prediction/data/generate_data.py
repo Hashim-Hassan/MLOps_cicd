@@ -59,3 +59,4 @@ df.to_csv('engine_data.csv', index=False)
 print(f"Generated {len(df)} samples with {df['degradation_status'].sum()} degraded engines")
 print(f"Degradation rate: {df['degradation_status'].mean():.1%}")
 print(f"Missing values: {df.isnull().sum().sum()}")
+
